@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# Set this to the email address associtaed with your GPG public key.
+recipient=
+
+usage() {
+    echo "Usage: $(basename $0) <file | dir>" >&2
+} 
+
+error() {
+    printf "Error calling \`%s\', exiting...\n" $1 >&2
+    exit 1
+}
+
+# Check usage.
+if [[ $# < 1 ]]; then
+    usage
+    exit 1
+fi
+
+# Process arguments.
+until [ -z "$1" ]; do
+
+    # Tar then encrypt directories.
+    if [ -d "$1" ]; then
+        dir="${1%%/}"
+        tar czf "${dir}.tar.gz" "${dir}" || error tar
+        gpg --output "${dir}.gpg" --encrypt -r "$recipient" "${dir}.tar.gz" || error gpg
+        rm -f "${dir}.tar.gz" && \
+        rm -rf "$dir"
+
+    # Unencrypt *.gpg files; untar them if necessary.
+    elif [[ "$1" == *.gpg ]]; then
+        result="${1%.gpg}"
+        gpg --output "$result" --decrypt "$1" || error gpg
+        if tar -tf "$result" &>/dev/null; then
+            mv "$result" "${result}.tar.gz"
+            tar -xzf "${result}.tar.gz" || error tar
+            rm -f "${result}.tar.gz"
+        fi
+        rm -f "$1"
+
+    # Must be a plain file, so encrypt it.
+    elif [ -f "$1" ]; then
+        gpg --output "${1}.gpg" --encrypt -r "$recipient" "$1" || error gpg
+        rm -rf "$1"
+
+    # Should never get here.
+    else
+        echo "Error, I don't know how to handle $1."
+        exit 1
+    fi
+
+    shift
+done
